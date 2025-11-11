@@ -1,4 +1,4 @@
-# Solation - DeFi Options Trading Interface
+# Solation - Earn Upfront Premiums on Your Crypto
 
 A beautiful, retro-styled decentralized finance (DeFi) options trading interface built with React, TypeScript, and Solana Wallet Adapter.
 

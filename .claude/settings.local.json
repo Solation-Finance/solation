@@ -4,7 +4,12 @@
       "Bash(npm install:*)",
       "Bash(npx tailwindcss init -p)",
       "Bash(npm uninstall:*)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(mkdir:*)",
+      "Bash(cp:*)",
+      "Bash(find:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:docs.pyth.network)"
     ],
     "deny": [],
     "ask": []
