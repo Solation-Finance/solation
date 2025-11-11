@@ -1,0 +1,80 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&display=swap');
+@import '@solana/wallet-adapter-react-ui/styles.css';
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    @apply font-mono;
+  }
+
+  body {
+    @apply bg-retro-beige text-retro-black antialiased;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-retro-green hover:bg-retro-green-dark text-white font-medium py-3 px-6 rounded-retro transition-all duration-200 shadow-retro hover:shadow-retro-lg transform hover:-translate-y-0.5;
+  }
+
+  .btn-secondary {
+    @apply bg-white hover:bg-retro-gray-100 text-retro-black font-medium py-3 px-6 rounded-retro border-2 border-retro-black transition-all duration-200;
+  }
+
+  .card {
+    @apply bg-white rounded-retro border-2 border-retro-black p-6 shadow-retro;
+  }
+
+  .input {
+    @apply w-full px-4 py-3 bg-white border-2 border-retro-gray-300 rounded-retro focus:border-retro-green focus:outline-none transition-colors;
+  }
+
+  .tab-active {
+    @apply bg-retro-green text-white;
+  }
+
+  .tab-inactive {
+    @apply bg-white text-retro-black hover:bg-retro-gray-100;
+  }
+}
+
+/* Wallet Adapter Overrides */
+
+/* Top right Connect button - Retro style (exclude modal buttons) */
+.wallet-adapter-button-trigger,
+button.wallet-adapter-button-trigger,
+header .wallet-adapter-button {
+  background-color: white !important;
+  background: white !important;
+  color: #0A0A0A !important;
+  border: 2px solid #0A0A0A !important;
+  border-radius: 2px !important;
+  font-family: 'DM Mono', 'Courier New', monospace !important;
+  font-weight: 500 !important;
+  box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.1) !important;
+  transition: all 0.2s !important;
+}
+
+.wallet-adapter-button-trigger:hover:not([disabled]),
+button.wallet-adapter-button-trigger:hover:not([disabled]),
+header .wallet-adapter-button:hover:not([disabled]) {
+  background-color: #E5E5E5 !important;
+  background: #E5E5E5 !important;
+  color: #0A0A0A !important;
+  box-shadow: 8px 8px 0px rgba(0, 0, 0, 0.15) !important;
+  transform: translateY(-2px) !important;
+}
+
+.wallet-adapter-modal-wrapper {
+  @apply font-mono !important;
+}
+
+/* Remove the blocking overlay */
+.wallet-adapter-modal-overlay {
+  background-color: transparent !important;
+  backdrop-filter: none !important;
+  pointer-events: none !important;
+}
