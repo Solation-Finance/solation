@@ -9,7 +9,10 @@
       "Bash(cp:*)",
       "Bash(find:*)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:docs.pyth.network)"
+      "WebFetch(domain:docs.pyth.network)",
+      "Bash(anchor init:*)",
+      "Bash(anchor build:*)",
+      "Bash(cargo check:*)"
     ],
     "deny": [],
     "ask": []
