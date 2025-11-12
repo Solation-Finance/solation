@@ -125,18 +125,9 @@ export const ASSETS: Record<AssetSymbol, Asset> = {
 }
 ```
 
-## Future Enhancements
-
-- Real-time price feeds from Solana DEX APIs
-- On-chain transaction execution
-- Position persistence in database
-- Advanced charting and analytics
-- Mobile app with React Native
-- Multi-language support
-
 ## License
 
-MIT
+Business Source License 1.1 (BSL 1.1)
 
 ## Acknowledgments
 
