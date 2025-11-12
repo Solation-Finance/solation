@@ -1,8 +1,13 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
-import { useWallet } from '@solana/wallet-adapter-react';
+import { useWallet, useConnection } from '@solana/wallet-adapter-react';
+import { PublicKey, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { Position, IncomeData, DashboardMetrics } from '../types';
-import { formatCurrency } from '../utils/assetConfig';
+import { formatCurrency, ASSETS } from '../utils/assetConfig';
+import { getProgram } from '../anchor/setup';
+import { fetchUserPositions } from '../services/positions';
+import { canSettlePosition, settlePosition } from '../services/settlement';
+import { SOL_MINT, USDC_MINT } from '../config/constants';
 
 // Mock data for demonstration
 const generateMockPositions = (): Position[] => {
@@ -61,14 +66,139 @@ const generateMockIncomeData = (): IncomeData[] => {
 };
 
 export const DashboardPage: React.FC = () => {
-  const { connected } = useWallet();
-  const [positions] = useState<Position[]>(generateMockPositions());
-  const [incomeData] = useState<IncomeData[]>(generateMockIncomeData());
+  const { connected, publicKey, signTransaction, signAllTransactions } = useWallet();
+  const { connection } = useConnection();
+
+  const [blockchainPositions, setBlockchainPositions] = useState<any[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSettling, setIsSettling] = useState<string | null>(null);
+
+  // Fetch positions from blockchain
+  useEffect(() => {
+    const loadPositions = async () => {
+      if (!connected || !publicKey) {
+        setBlockchainPositions([]);
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+      try {
+        const program = getProgram(connection, {
+          publicKey,
+          signTransaction: async (tx) => {
+            if (signTransaction) return await signTransaction(tx);
+            throw new Error('Wallet does not support transaction signing');
+          },
+          signAllTransactions: async (txs) => {
+            if (signAllTransactions) return await signAllTransactions(txs);
+            throw new Error('Wallet does not support transaction signing');
+          },
+        });
+
+        const userPositions = await fetchUserPositions(program, publicKey);
+        console.log('Fetched positions:', userPositions);
+        setBlockchainPositions(userPositions);
+      } catch (error) {
+        console.error('Error loading positions:', error);
+        setBlockchainPositions([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    loadPositions();
+  }, [connected, publicKey, connection, signTransaction, signAllTransactions]);
+
+  // Handle settlement
+  const handleSettle = async (position: any) => {
+    if (!connected || !publicKey || !signTransaction || !signAllTransactions) {
+      alert('Please connect your wallet');
+      return;
+    }
+
+    setIsSettling(position.publicKey.toBase58());
+
+    try {
+      const program = getProgram(connection, { publicKey, signTransaction, signAllTransactions });
+
+      const canSettle = await canSettlePosition(program, position.publicKey);
+      if (!canSettle) {
+        alert('Position cannot be settled yet or is already settled.');
+        setIsSettling(null);
+        return;
+      }
+
+      const positionAccount = position.account;
+      const tx = await settlePosition({
+        program,
+        userPublicKey: publicKey,
+        positionPublicKey: position.publicKey,
+        assetMint: positionAccount.assetMint,
+        quoteMint: positionAccount.quoteMint,
+        positionId: positionAccount.positionId,
+      });
+
+      alert(`✅ Position settled! TX: ${tx.slice(0, 8)}...${tx.slice(-8)}`);
+
+      const userPositions = await fetchUserPositions(program, publicKey);
+      setBlockchainPositions(userPositions);
+    } catch (error: any) {
+      console.error('Error settling:', error);
+      alert(`❌ Failed to settle: ${error.message || 'Unknown error'}`);
+    } finally {
+      setIsSettling(null);
+    }
+  };
+
+  // Convert blockchain positions to display format
+  const positions: Position[] = useMemo(() => {
+    return blockchainPositions.map((p) => {
+      const account = p.account;
+      const assetMintStr = account.assetMint.toBase58();
+      const asset = assetMintStr === SOL_MINT.toBase58() ? 'SOL' : 'USDC';
+      const strategy = account.strategy.coveredCall !== undefined ? 'covered-call' : 'cash-secured-put';
+      const amount = account.contractSize.toNumber() / LAMPORTS_PER_SOL;
+      const strikePrice = account.strikePrice.toNumber() / 100000000;
+      const premiumEarned = account.premiumPaid.toNumber() / 1_000_000;
+      const expirationDate = new Date(account.expiryTimestamp.toNumber() * 1000).toLocaleDateString();
+      const createdAt = new Date(account.createdAt.toNumber() * 1000).toLocaleDateString();
+
+      let status = 'active';
+      if (account.status.settledItm !== undefined) status = 'exercised';
+      else if (account.status.settledOtm !== undefined || account.status.settledAtm !== undefined) status = 'expired';
+
+      return {
+        id: p.publicKey.toBase58(),
+        asset,
+        strategy,
+        amount,
+        strikePrice,
+        expirationDate,
+        premiumEarned,
+        status,
+        createdAt,
+        _raw: p, // Store raw data for settlement
+      };
+    });
+  }, [blockchainPositions]);
+
+  // Use mock data if no blockchain positions
+  const [mockPositions] = useState<Position[]>(generateMockPositions());
+  const [mockIncomeData] = useState<IncomeData[]>(generateMockIncomeData());
+
+  const displayPositions = positions.length > 0 ? positions : mockPositions;
+  const incomeData = positions.length > 0
+    ? positions.map((p) => ({
+        date: p.createdAt,
+        amount: p.premiumEarned,
+      }))
+    : mockIncomeData;
 
   const metrics: DashboardMetrics = useMemo(() => {
-    const activePositions = positions.filter((p) => p.status === 'active').length;
-    const totalEarnings = positions.reduce((sum, p) => sum + p.premiumEarned, 0);
-    const realizedProfits = positions
+    const activePositions = displayPositions.filter((p) => p.status === 'active').length;
+    const totalEarnings = displayPositions.reduce((sum, p) => sum + p.premiumEarned, 0);
+    const realizedProfits = displayPositions
       .filter((p) => p.status === 'expired')
       .reduce((sum, p) => sum + p.premiumEarned, 0);
 
@@ -78,7 +208,7 @@ export const DashboardPage: React.FC = () => {
       totalEarnings,
       realizedProfits,
     };
-  }, [positions, incomeData]);
+  }, [displayPositions, incomeData]);
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -232,33 +362,58 @@ export const DashboardPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {positions.map((position) => (
-                  <tr
-                    key={position.id}
-                    className="border-b border-retro-gray-200 hover:bg-retro-gray-100 transition-colors"
-                  >
-                    <td className="py-4 px-4 font-medium">{position.asset}</td>
-                    <td className="py-4 px-4 text-sm capitalize">
-                      {position.strategy.replace('-', ' ')}
-                    </td>
-                    <td className="py-4 px-4 text-right">{position.amount}</td>
-                    <td className="py-4 px-4 text-right">
-                      {formatCurrency(position.strikePrice)}
-                    </td>
-                    <td className="py-4 px-4 text-sm">{position.expirationDate}</td>
-                    <td className="py-4 px-4 text-right font-bold text-retro-green">
-                      {formatCurrency(position.premiumEarned)}
-                    </td>
-                    <td className="py-4 px-4 text-center">
-                      {getStatusBadge(position.status)}
+                {isLoading ? (
+                  <tr>
+                    <td colSpan={7} className="py-12 text-center text-retro-gray-600">
+                      Loading positions...
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  displayPositions.map((position: any) => {
+                    const canSettle = position.status === 'active' &&
+                      new Date(position.expirationDate) < new Date();
+                    const isSettlingThis = isSettling === position.id;
+
+                    return (
+                      <tr
+                        key={position.id}
+                        className="border-b border-retro-gray-200 hover:bg-retro-gray-100 transition-colors"
+                      >
+                        <td className="py-4 px-4 font-medium">{position.asset}</td>
+                        <td className="py-4 px-4 text-sm capitalize">
+                          {position.strategy.replace('-', ' ')}
+                        </td>
+                        <td className="py-4 px-4 text-right">{position.amount.toFixed(4)}</td>
+                        <td className="py-4 px-4 text-right">
+                          {formatCurrency(position.strikePrice)}
+                        </td>
+                        <td className="py-4 px-4 text-sm">{position.expirationDate}</td>
+                        <td className="py-4 px-4 text-right font-bold text-retro-green">
+                          {formatCurrency(position.premiumEarned)}
+                        </td>
+                        <td className="py-4 px-4 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            {getStatusBadge(position.status)}
+                            {canSettle && position._raw && (
+                              <button
+                                onClick={() => handleSettle(position._raw)}
+                                disabled={isSettlingThis}
+                                className="px-2 py-1 bg-retro-black text-white text-xs rounded-retro hover:bg-retro-gray-700 disabled:opacity-50"
+                              >
+                                {isSettlingThis ? 'Settling...' : 'Settle'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
 
-          {positions.length === 0 && (
+          {displayPositions.length === 0 && !isLoading && (
             <div className="text-center py-12 text-retro-gray-600">
               <p className="text-lg mb-2">No positions yet</p>
               <p className="text-sm">Start earning premiums to see your positions here</p>

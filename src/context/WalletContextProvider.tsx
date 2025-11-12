@@ -8,17 +8,20 @@ import {
   TorusWalletAdapter,
 } from '@solana/wallet-adapter-wallets';
 import { clusterApiUrl } from '@solana/web3.js';
+import { LOCALNET_RPC } from '../config/constants';
 
 interface WalletContextProviderProps {
   children: ReactNode;
 }
 
 export const WalletContextProvider: FC<WalletContextProviderProps> = ({ children }) => {
-  // Use devnet for development
-  const network = WalletAdapterNetwork.Devnet;
+  // Use localnet for development
+  // Change this to WalletAdapterNetwork.Devnet or WalletAdapterNetwork.Mainnet when deploying
+  const network = WalletAdapterNetwork.Devnet; // Not used for localnet
 
-  // You can also provide a custom RPC endpoint
-  const endpoint = useMemo(() => clusterApiUrl(network), [network]);
+  // Connect to localnet for testing
+  // To use devnet instead, replace LOCALNET_RPC with: clusterApiUrl(network)
+  const endpoint = useMemo(() => LOCALNET_RPC, []);
 
   const wallets = useMemo(
     () => [

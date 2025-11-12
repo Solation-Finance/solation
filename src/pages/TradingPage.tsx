@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
-import { LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { LAMPORTS_PER_SOL, PublicKey } from '@solana/web3.js';
 import {
   ASSETS,
   generateStrikePrices,
@@ -12,12 +12,16 @@ import {
   getAssetsByStrategy,
 } from '../utils/assetConfig';
 import { AssetSymbol, Strategy, StrikePrice, ExpirationDate } from '../types';
+import { getProgram } from '../anchor/setup';
+import { createPosition, getNextPositionId } from '../services/positions';
+import { fetchQuotesForAsset, getBestQuoteForStrike } from '../services/quotes';
+import { SOL_MINT, USDC_MINT } from '../config/constants';
 
 export const TradingPage: React.FC = () => {
   const { assetSymbol } = useParams<{ assetSymbol: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const { publicKey, connected } = useWallet();
+  const { publicKey, connected, signTransaction, signAllTransactions } = useWallet();
   const { connection } = useConnection();
 
   const [strategy, setStrategy] = useState<Strategy>(
@@ -28,6 +32,8 @@ export const TradingPage: React.FC = () => {
   const [amount, setAmount] = useState<string>('');
   const [balance, setBalance] = useState<number>(0);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const [isCreatingPosition, setIsCreatingPosition] = useState(false);
+  const [transactionSignature, setTransactionSignature] = useState<string | null>(null);
 
   const [showAssetDropdown, setShowAssetDropdown] = useState(false);
   const [showStrategyDropdown, setShowStrategyDropdown] = useState(false);
@@ -119,14 +125,19 @@ export const TradingPage: React.FC = () => {
     }
   };
 
-  const handleEarnPremium = () => {
-    if (!connected) {
+  const handleEarnPremium = async () => {
+    if (!connected || !publicKey) {
       alert('Please connect your wallet first');
       return;
     }
 
     if (!amount || parseFloat(amount) <= 0) {
       alert('Please enter a valid amount');
+      return;
+    }
+
+    if (!selectedStrike || !selectedDate) {
+      alert('Please select a strike price and expiration date');
       return;
     }
 
@@ -142,14 +153,110 @@ export const TradingPage: React.FC = () => {
       }
     }
 
-    // Simulate transaction
-    const premiumEarned = strategy === 'cash-secured-put'
-      ? (parseFloat(amount) / (selectedStrike?.price || 1)) * (selectedStrike?.premium || 0)
-      : parseFloat(amount) * (selectedStrike?.premium || 0);
+    setIsCreatingPosition(true);
+    setTransactionSignature(null);
 
-    alert(
-      `Transaction simulated!\n\nYou would earn ${formatCurrency(premiumEarned)} USDC upfront premium.`
-    );
+    try {
+      // Get the Anchor program
+      const program = getProgram(connection, {
+        publicKey,
+        signTransaction: async (tx) => {
+          if (signTransaction) {
+            return await signTransaction(tx);
+          }
+          throw new Error('Wallet does not support transaction signing');
+        },
+        signAllTransactions: async (txs) => {
+          if (signAllTransactions) {
+            return await signAllTransactions(txs);
+          }
+          throw new Error('Wallet does not support transaction signing');
+        },
+      });
+
+      // Fetch quotes for this asset and strategy
+      const assetMint = asset.symbol === 'SOL' ? SOL_MINT : new PublicKey(asset.mintAddress || '');
+      const strategyType = strategy === 'covered-call' ? 'CoveredCall' : 'CashSecuredPut';
+
+      console.log('Fetching quotes for:', assetMint.toBase58(), strategyType);
+      const quotes = await fetchQuotesForAsset(program, assetMint, strategyType);
+
+      if (quotes.length === 0) {
+        alert('No quotes available for this asset and strategy. Please run the initialization scripts first.');
+        setIsCreatingPosition(false);
+        return;
+      }
+
+      // Find a quote with the selected strike price (convert to 8 decimals)
+      const strikePriceInDecimals = Math.floor(selectedStrike.price * 100000000);
+      const bestQuote = getBestQuoteForStrike(quotes, strikePriceInDecimals);
+
+      if (!bestQuote) {
+        alert(`No quote found for strike price $${selectedStrike.price}. Available strikes: ${quotes[0]?.strikes.map(s => s.strikePrice / 100000000).join(', ')}`);
+        setIsCreatingPosition(false);
+        return;
+      }
+
+      console.log('Using quote:', bestQuote.quote.publicKey.toBase58());
+
+      // Get next position ID for this user
+      const positionId = await getNextPositionId(program, publicKey);
+      console.log('Creating position with ID:', positionId.toString());
+
+      // Calculate contract size based on asset
+      const contractSize = strategy === 'cash-secured-put'
+        ? Math.floor((parseFloat(amount) / selectedStrike.price) * LAMPORTS_PER_SOL)
+        : Math.floor(parseFloat(amount) * LAMPORTS_PER_SOL);
+
+      // Create the position
+      const tx = await createPosition({
+        program,
+        userPublicKey: publicKey,
+        assetMint,
+        quoteMint: USDC_MINT,
+        quoteAddress: bestQuote.quote.publicKey,
+        strikePrice: strikePriceInDecimals,
+        contractSize,
+        positionId,
+      });
+
+      setTransactionSignature(tx);
+
+      // Calculate premium earned
+      const premiumEarned = strategy === 'cash-secured-put'
+        ? (parseFloat(amount) / selectedStrike.price) * selectedStrike.premium
+        : parseFloat(amount) * selectedStrike.premium;
+
+      alert(
+        `✅ Position created successfully!\n\n` +
+        `Premium earned: ${formatCurrency(premiumEarned)} USDC\n` +
+        `Transaction: ${tx.slice(0, 8)}...${tx.slice(-8)}\n\n` +
+        `View in Dashboard or on Solscan`
+      );
+
+      // Reset form
+      setAmount('');
+
+    } catch (error: any) {
+      console.error('Error creating position:', error);
+
+      let errorMessage = 'Failed to create position. ';
+
+      if (error.message?.includes('User rejected')) {
+        errorMessage = 'Transaction was rejected in wallet.';
+      } else if (error.message?.includes('insufficient funds')) {
+        errorMessage = 'Insufficient funds for transaction.';
+      } else if (error.logs) {
+        errorMessage += 'Check console for program logs.';
+        console.error('Program logs:', error.logs);
+      } else {
+        errorMessage += error.message || 'Unknown error occurred.';
+      }
+
+      alert(`❌ ${errorMessage}`);
+    } finally {
+      setIsCreatingPosition(false);
+    }
   };
 
   const actionVerb = strategy === 'covered-call' ? 'sell' : 'buy';
@@ -432,12 +539,31 @@ export const TradingPage: React.FC = () => {
             !amount ||
             parseFloat(amount) <= 0 ||
             !selectedStrike ||
-            parseFloat(amount) > balance
+            parseFloat(amount) > balance ||
+            isCreatingPosition
           }
           className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed"
         >
-          {connected ? 'Earn upfront premium now' : 'Connect wallet to continue'}
+          {isCreatingPosition
+            ? 'Creating position...'
+            : connected
+            ? 'Earn upfront premium now'
+            : 'Connect wallet to continue'}
         </button>
+
+        {transactionSignature && (
+          <div className="mt-4 p-4 bg-retro-green/10 border-2 border-retro-green rounded-retro">
+            <p className="text-sm font-medium mb-2">✅ Transaction Confirmed!</p>
+            <a
+              href={`https://solscan.io/tx/${transactionSignature}?cluster=custom&customUrl=http%3A%2F%2F127.0.0.1%3A8899`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-retro-green hover:underline break-all"
+            >
+              {transactionSignature}
+            </a>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -12,7 +12,8 @@
       "WebFetch(domain:docs.pyth.network)",
       "Bash(anchor init:*)",
       "Bash(anchor build:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []
