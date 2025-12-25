@@ -87,17 +87,11 @@ pub mod solation {
         instructions::handle_register_market_maker(ctx)
     }
 
-    pub fn initialize_vault(
-        ctx: Context<InitializeVault>,
-        asset_mint: Pubkey,
-    ) -> Result<()> {
+    pub fn initialize_vault(ctx: Context<InitializeVault>, asset_mint: Pubkey) -> Result<()> {
         instructions::handle_initialize_vault(ctx, asset_mint)
     }
 
-    pub fn deposit_liquidity(
-        ctx: Context<DepositLiquidity>,
-        amount: u64,
-    ) -> Result<()> {
+    pub fn deposit_liquidity(ctx: Context<DepositLiquidity>, amount: u64) -> Result<()> {
         instructions::handle_deposit_liquidity(ctx, amount)
     }
 
@@ -145,7 +139,35 @@ pub mod solation {
         )
     }
 
-    // ===== User Instructions =====
+    // ===== Position Request Instructions (Two-Phase Commit) =====
+
+    /// User requests a position - creates pending request for MM to approve
+    pub fn request_position(
+        ctx: Context<RequestPosition>,
+        request_id: u64,
+        strike_price: u64,
+        contract_size: u64,
+    ) -> Result<()> {
+        instructions::handle_request_position(ctx, request_id, strike_price, contract_size)
+    }
+
+    /// MM confirms the request within 30 seconds - locks collateral and pays premium
+    pub fn confirm_position(ctx: Context<ConfirmPosition>, position_id: u64) -> Result<()> {
+        instructions::handle_confirm_position(ctx, position_id)
+    }
+
+    /// MM explicitly rejects the request
+    pub fn reject_request(ctx: Context<RejectRequest>) -> Result<()> {
+        instructions::handle_reject_request(ctx)
+    }
+
+    /// Anyone can cancel expired requests (after 30s timeout)
+    pub fn cancel_expired_request(ctx: Context<CancelExpiredRequest>) -> Result<()> {
+        instructions::handle_cancel_expired_request(ctx)
+    }
+
+    // ===== Legacy User Instructions (Deprecated) =====
+    // Note: create_position is kept for backward compatibility but will be removed
 
     pub fn create_position(
         ctx: Context<CreatePosition>,

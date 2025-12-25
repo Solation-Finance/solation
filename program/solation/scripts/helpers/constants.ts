@@ -8,7 +8,7 @@ export const SOL_MINT = new PublicKey("So111111111111111111111111111111111111111
 
 // USDC mint - we'll create this on localnet
 // This is a placeholder - will be replaced with actual mint after creation
-export const USDC_MINT_PLACEHOLDER = "Fp49VfCJxfF2jhyvnmyAGjK63RkS4j47q688ggHkKiwa";
+export const USDC_MINT_PLACEHOLDER = "HYF5Rox5tYu2HDmk2KHsYyFeoaGsRHYfekun3yrXe9FL";
 
 // Mock Pyth Feed IDs (32-byte arrays)
 // These are fake feed IDs for testing purposes

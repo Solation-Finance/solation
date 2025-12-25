@@ -8,6 +8,10 @@ pub const POSITION_SEED: &[u8] = b"position";
 pub const POSITION_USER_VAULT_SEED: &[u8] = b"position_user_vault";
 pub const POSITION_MM_VAULT_SEED: &[u8] = b"position_mm_vault";
 pub const ASSET_CONFIG_SEED: &[u8] = b"asset_config";
+pub const POSITION_REQUEST_SEED: &[u8] = b"position_request";
+
+// MM Confirmation Window (seconds)
+pub const MM_CONFIRMATION_WINDOW: i64 = 30;
 
 // Pyth parameters
 pub const PYTH_STALENESS_THRESHOLD: u64 = 60; // 60 seconds

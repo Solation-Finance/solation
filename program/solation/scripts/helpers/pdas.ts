@@ -121,10 +121,14 @@ export function getPositionMMVaultPDA(
 export function getQuotePDA(
   marketMaker: PublicKey,
   assetMint: PublicKey,
-  strategy: number
+  strategy: number,
+  expiryTimestamp: number
 ): [PublicKey, number] {
   const strategyBuffer = Buffer.alloc(1);
   strategyBuffer.writeUInt8(strategy);
+
+  const expiryBuffer = Buffer.alloc(8);
+  expiryBuffer.writeBigInt64LE(BigInt(expiryTimestamp));
 
   return PublicKey.findProgramAddressSync(
     [
@@ -132,6 +136,7 @@ export function getQuotePDA(
       marketMaker.toBuffer(),
       assetMint.toBuffer(),
       strategyBuffer,
+      expiryBuffer,
     ],
     PROGRAM_ID
   );

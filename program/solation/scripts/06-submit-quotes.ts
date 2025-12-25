@@ -1,6 +1,6 @@
 import * as anchor from "@coral-xyz/anchor";
 import { Program } from "@coral-xyz/anchor";
-import { PublicKey, Keypair, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { PublicKey, LAMPORTS_PER_SOL } from "@solana/web3.js";
 import { Solation } from "../target/types/solation";
 import { getMarketMakerPDA, getAssetConfigPDA, getQuotePDA } from "./helpers/pdas";
 import { SOL_MINT, MOCK_PRICES, DECIMALS } from "./helpers/constants";
@@ -123,21 +123,24 @@ async function submitQuote(
     };
   });
 
-  // Create a unique quote account
-  const quoteKeypair = Keypair.generate();
+  // Create the strategy enum properly for Anchor
+  let strategyEnum: any;
+  let strategyIndex: number;
+  if (strategy === "CoveredCall") {
+    strategyEnum = { coveredCall: {} };
+    strategyIndex = 0;
+  } else {
+    strategyEnum = { cashSecuredPut: {} };
+    strategyIndex = 1;
+  }
 
-  console.log(`  Quote Account: ${quoteKeypair.publicKey.toBase58()}`);
+  // Derive the quote PDA
+  const [quote] = getQuotePDA(marketMaker, assetMint, strategyIndex, expiry.timestamp);
+
+  console.log(`  Quote PDA: ${quote.toBase58()}`);
   console.log(`  Number of strikes: ${strikes.length}`);
 
   try {
-    // Create the strategy enum properly for Anchor
-    let strategyEnum: any;
-    if (strategy === "CoveredCall") {
-      strategyEnum = { coveredCall: {} };
-    } else {
-      strategyEnum = { cashSecuredPut: {} };
-    }
-
     const tx = await program.methods
       .submitQuote(
         assetMint,
@@ -149,24 +152,24 @@ async function submitQuote(
         new anchor.BN(100 * LAMPORTS_PER_SOL) // Max size: 100 SOL
       )
       .accountsPartial({
-        quote: quoteKeypair.publicKey,
+        quote,
         owner,
+        systemProgram: anchor.web3.SystemProgram.programId,
       })
-      .signers([quoteKeypair])
       .rpc();
 
     console.log(`  ✅ Quote submitted!`);
     console.log(`  Transaction: ${tx}`);
 
     // Verify
-    const quote = await program.account.quote.fetch(quoteKeypair.publicKey);
+    const quoteAccount = await program.account.quote.fetch(quote);
     console.log(`  Verification:`);
-    console.log(`    Market Maker: ${quote.marketMaker.toBase58()}`);
-    console.log(`    Active: ${quote.active}`);
-    console.log(`    Expiry: ${new Date(quote.expiryTimestamp.toNumber() * 1000).toISOString()}`);
-    console.log(`    Min Size: ${quote.minSize.toNumber() / LAMPORTS_PER_SOL} SOL`);
-    console.log(`    Max Size: ${quote.maxSize.toNumber() / LAMPORTS_PER_SOL} SOL`);
-    console.log(`    Number of Strikes: ${quote.strikes.length}`);
+    console.log(`    Market Maker: ${quoteAccount.marketMaker.toBase58()}`);
+    console.log(`    Active: ${quoteAccount.active}`);
+    console.log(`    Expiry: ${new Date(quoteAccount.expiryTimestamp.toNumber() * 1000).toISOString()}`);
+    console.log(`    Min Size: ${quoteAccount.minSize.toNumber() / LAMPORTS_PER_SOL} SOL`);
+    console.log(`    Max Size: ${quoteAccount.maxSize.toNumber() / LAMPORTS_PER_SOL} SOL`);
+    console.log(`    Number of Strikes: ${quoteAccount.strikes.length}`);
 
   } catch (error) {
     console.error(`  ❌ Error submitting quote:`);

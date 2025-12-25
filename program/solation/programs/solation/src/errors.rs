@@ -61,4 +61,16 @@ pub enum ErrorCode {
 
     #[msg("Invalid quote parameters")]
     InvalidQuoteParameters,
+
+    #[msg("Position request has expired")]
+    RequestExpired,
+
+    #[msg("Position request is not in pending status")]
+    RequestNotPending,
+
+    #[msg("Position request has not expired yet")]
+    RequestNotExpired,
+
+    #[msg("Only the market maker can confirm this request")]
+    UnauthorizedConfirmation,
 }

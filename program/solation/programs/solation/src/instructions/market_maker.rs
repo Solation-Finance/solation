@@ -269,7 +269,7 @@ pub fn handle_withdraw_liquidity(
 
 // Submit quote
 #[derive(Accounts)]
-#[instruction(asset_mint: Pubkey, strategy: StrategyType)]
+#[instruction(asset_mint: Pubkey, quote_mint: Pubkey, strategy: StrategyType, expiry_timestamp: i64)]
 pub struct SubmitQuote<'info> {
     #[account(
         seeds = [MARKET_MAKER_SEED, owner.key().as_ref()],
@@ -287,7 +287,8 @@ pub struct SubmitQuote<'info> {
             QUOTE_SEED,
             market_maker.key().as_ref(),
             asset_mint.as_ref(),
-            &[strategy as u8]
+            &[strategy as u8],
+            &expiry_timestamp.to_le_bytes()
         ],
         bump
     )]
